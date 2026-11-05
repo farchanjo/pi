@@ -268,13 +268,11 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
 				throw new Error(output.errorMessage || "An unknown error occurred");
 			}
-			if (process.env.PI_CHAIN_DEBUG) console.error("[chain] commit stop=", output.stopReason, "rid=", output.responseId);
 			if (output.stopReason !== "error" && output.stopReason !== "aborted") chain.commit(output.responseId);
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
 		} catch (error) {
-			if (process.env.PI_CHAIN_DEBUG) console.error("[chain] catch", String(error).slice(0, 160));
 			chain?.drop();
 			output.stopReason = options?.signal?.aborted ? "aborted" : "error";
 			const errorMessage = formatProviderError(
@@ -412,9 +410,6 @@ function planResponsesChain(
 
 	const digests = messages.map(digestInput);
 	const previous = responsesChains.get(sessionId);
-	if (process.env.PI_CHAIN_DEBUG) {
-		console.error("[chain] session", sessionId, "msgs", messages.length, "prev", previous ? `${previous.responseId.slice(0, 12)} n=${previous.sent}` : "none");
-	}
 	const reusable =
 		previous !== undefined &&
 		previous.responseId.length > 0 &&
