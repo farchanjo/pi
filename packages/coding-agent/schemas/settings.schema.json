@@ -687,9 +687,38 @@
         {
           "type": "string",
           "const": "gzip"
+        },
+        {
+          "type": "string",
+          "const": "zstd"
+        },
+        {
+          "type": "string",
+          "const": "br"
+        },
+        {
+          "type": "string",
+          "const": "auto"
         }
       ],
-      "description": "Compress request bodies above 1 KiB with gzip (\"gzip\") or send them as they are (\"off\")."
+      "description": "Request-body compression: \"br\" (default) falls back to zstd, gzip, and none; \"auto\" negotiates that chain from the remembered verdict; \"zstd\" or \"gzip\" forces the encoding; \"off\" sends bodies as they are."
+    },
+    "httpCompressionLevel": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "max"
+        },
+        {
+          "type": "string",
+          "const": "default"
+        },
+        {
+          "type": "string",
+          "const": "fast"
+        }
+      ],
+      "description": "Encoder effort for request compression: \"max\" (default), \"default\", or \"fast\"."
     },
     "cacheWarming": {
       "anyOf": [

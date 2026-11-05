@@ -11,22 +11,21 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const codingAgentDir = join(repoRoot, "packages", "coding-agent");
 const args = process.argv.slice(2);
 
-/** `--outfile <path>` picks the executable path; `--target bun-<platform>` cross-compiles like `bun build --compile`. */
+/**
+ * `--outfile <path>` picks the executable path; `--target bun-<platform>` cross-compiles like `bun build --compile`.
+ * Both accept the value after `=` as well, which is how `build-binaries.sh` passes them.
+ */
 let outfile = join(codingAgentDir, "dist", "pi");
 let compileTarget;
 for (let index = 0; index < args.length; index += 1) {
 	const arg = args[index];
-	if (arg === "--outfile") {
-		const value = args[++index];
-		if (value === undefined) throw new Error("--outfile needs a path");
-		outfile = resolve(process.cwd(), value);
-	} else if (arg === "--target") {
-		const value = args[++index];
-		if (value === undefined) throw new Error("--target needs a Bun target");
-		compileTarget = value;
-	} else {
-		throw new Error(`Unknown argument: ${arg}`);
-	}
+	const equal = arg.indexOf("=");
+	const name = equal === -1 ? arg : arg.slice(0, equal);
+	if (name !== "--outfile" && name !== "--target") throw new Error(`Unknown argument: ${arg}`);
+	const value = equal === -1 ? args[++index] : arg.slice(equal + 1);
+	if (value === undefined) throw new Error(`${name} needs a value`);
+	if (name === "--outfile") outfile = resolve(process.cwd(), value);
+	else compileTarget = value;
 }
 const undiciPath = [
 	join(repoRoot, "node_modules", "undici", "index.js"),
