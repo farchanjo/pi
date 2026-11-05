@@ -1,11 +1,12 @@
 # Changelog
 
-## [Unreleased]
+## [1.5.1] - 2026-11-05
 
 ### Added
 
 - Anthropic requests with a `sessionId` (and `cacheRetention` not `"none"`) now use message threads (`message-threads-2026-08-12` beta): the server continues from the previous reply and pi sends only the new messages instead of the whole conversation. When anything earlier in the request changed, or the server can't continue the thread, the full request is sent. Token counts and prompt caching are unchanged. On by default only for the `anthropic` provider on `api.anthropic.com`; set `compat.supportsMessageThreads` to change that, for example for gateways that forward the `thread` field. Call `cleanupSessionResources(sessionId)` when a session ends to free the per-session state ([#11545](https://github.com/earendil-works/pi/pull/11545))
 - Added `StreamOptions.disableContinuation`, which keeps a request from using or replacing server-side continuation state such as Anthropic message threads. Set it on requests that repeat an earlier one, such as cache warming ([#11545](https://github.com/earendil-works/pi/pull/11545))
+- `openai-responses` requests with `compat.supportsStatefulStore: true` and a stable `sessionId` now keep the conversation server-side and send only the new turn: `store: true` and the `response.id` of each completed turn are remembered, and a follow-up carries just the unseen messages plus `previous_response_id`. The chain is refused when the incoming prefix is not byte-identical to what was already sent (edited message, compacted prefix, changed system prompt), and the assistant turn is skipped because a stateful server stores the output it generated. A rejected reference (evicted or unknown id answers 404) falls back to a full send inside the same call, and the per-session table is bounded at 256 sessions with a 1 h TTL. Off by default because OpenAI's endpoints bill and behave differently with storing enabled; the server-side store needs a bound of its own before enabling
 
 ### Fixed
 
