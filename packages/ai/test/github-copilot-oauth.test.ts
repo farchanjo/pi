@@ -467,7 +467,19 @@ describe("GitHub Copilot OAuth device flow", () => {
 			notify: () => {},
 		});
 
-		await vi.advanceTimersByTimeAsync(1000);
+		// models.login reaches the device-code request on a later microtask than the
+		// other cases, so drain it first; then run out the device poll interval and
+		// every Retry-After backoff the policy update schedules.
+		// models.login reaches the device-code request after the advance below has
+		// already returned, so keep advancing (each await also turns the real event
+		// loop) until the login settles.
+		let settled = false;
+		void loginPromise.then(() => {
+			settled = true;
+		});
+		for (let elapsed = 0; elapsed < 60_000 && !settled; elapsed += 1000) {
+			await vi.advanceTimersByTimeAsync(1000);
+		}
 		const credential = await loginPromise;
 		expect(credential).toMatchObject({ type: "oauth", access: testCopilotAccessToken });
 		expect(policyModelIds).toEqual([firstModelId]);
