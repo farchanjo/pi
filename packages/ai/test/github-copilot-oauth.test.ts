@@ -6,6 +6,10 @@ import { githubCopilotProvider } from "../src/providers/github-copilot.ts";
 
 const neverAbortedSignal = new AbortController().signal;
 
+// Captured before any vi.useFakeTimers(): the real 0 ms timer below lets pending
+// network callbacks run while the fake clock is advanced.
+const realSetTimeout = globalThis.setTimeout;
+
 const testCopilotAccessToken = "tid=test;exp=9999999999;proxy-ep=proxy.individual.githubcopilot.com;";
 const testCopilotModelsUrl = "https://api.individual.githubcopilot.com/models";
 
@@ -477,7 +481,11 @@ describe("GitHub Copilot OAuth device flow", () => {
 		void loginPromise.then(() => {
 			settled = true;
 		});
-		for (let elapsed = 0; elapsed < 60_000 && !settled; elapsed += 1000) {
+		// Real time, not the faked clock: the loop only spins while the login is
+		// waiting, and a busy machine must not run it out.
+		const deadline = process.hrtime.bigint() + 10_000_000_000n;
+		while (!settled && process.hrtime.bigint() < deadline) {
+			await new Promise((resolve) => realSetTimeout(resolve, 0));
 			await vi.advanceTimersByTimeAsync(1000);
 		}
 		const credential = await loginPromise;
