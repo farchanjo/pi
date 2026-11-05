@@ -1,8 +1,5 @@
-import { describe, expect, it, beforeEach } from "vitest";
-import {
-	planResponsesChain,
-	resetResponsesChainsForTest,
-} from "../src/api/openai-responses.ts";
+import { beforeEach, describe, expect, it } from "vitest";
+import { planResponsesChain, resetResponsesChainsForTest } from "../src/api/openai-responses.ts";
 
 const compat = { supportsStatefulStore: true } as never;
 const off = { supportsStatefulStore: false } as never;

@@ -1,5 +1,4 @@
 import OpenAI from "openai";
-import { createHash } from "node:crypto";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses.js";
 import { clampThinkingLevel } from "../models.ts";
 import type {
@@ -18,6 +17,7 @@ import type {
 } from "../types.ts";
 import { formatProviderError, normalizeProviderError } from "../utils/error-body.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
+import { shortHash } from "../utils/hash.ts";
 import { headersToRecord } from "../utils/headers.ts";
 import { type ClientIdentity, getIdentityHeaders } from "../utils/identity.ts";
 import { getProviderEnvValue } from "../utils/provider-env.ts";
@@ -185,7 +185,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			timestamp: Date.now(),
 		};
 
-		let chain: ResponsesChainPlan;
+		let chain: ResponsesChainPlan | undefined;
 		try {
 			// Create OpenAI client
 			const apiKey = getClientApiKey(model.provider, options?.apiKey, options?.headers);
@@ -268,7 +268,7 @@ export const stream: StreamFunction<"openai-responses", OpenAIResponsesOptions> 
 			if (output.stopReason === "aborted" || output.stopReason === "error") {
 				throw new Error(output.errorMessage || "An unknown error occurred");
 			}
-			if (output.stopReason !== "error" && output.stopReason !== "aborted") chain.commit(output.responseId);
+			chain.commit(output.responseId);
 
 			stream.push({ type: "done", reason: output.stopReason, message: output });
 			stream.end();
@@ -375,7 +375,7 @@ const RESPONSES_CHAIN_MAX = 256;
 const RESPONSES_CHAIN_TTL_MS = 60 * 60 * 1000;
 
 export function digestInput(item: unknown): string {
-	return createHash("sha1").update(JSON.stringify(item) ?? "").digest("hex");
+	return shortHash(JSON.stringify(item) ?? "");
 }
 
 export function resetResponsesChainsForTest(): void {
@@ -431,10 +431,7 @@ export function planResponsesChain(
 	const nextRole = hasServerTurn ? (messages[previous.sent] as { role?: string })?.role : undefined;
 	// Only chain when the delta would carry something: the server turn alone is not
 	// a request, and an empty input would burn a round trip for nothing.
-	const canSkip =
-		!reusable ||
-		skip === 0 ||
-		(nextRole === "assistant" && messages.length > previous.sent + 1);
+	const canSkip = !reusable || skip === 0 || (nextRole === "assistant" && messages.length > previous.sent + 1);
 	return {
 		input: (reusable && canSkip
 			? messages.slice(previous.sent + 1)
