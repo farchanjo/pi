@@ -5,6 +5,7 @@ import type {
 	TelemetryCarrier,
 	TelemetrySpan,
 } from "@earendil-works/pi-telemetry";
+import { telemetryNow } from "@earendil-works/pi-telemetry";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTelemetryAdapterConformance } from "../../telemetry/src/testing/index.ts";
 import type { SqliteDatabase } from "../src/sqlite/index.ts";
@@ -110,7 +111,11 @@ describe("SQLite telemetry buffering and aggregation", () => {
 	});
 
 	it("stores span times in whole microseconds of telemetryNow, read back as milliseconds", async () => {
-		vi.spyOn(Date, "now").mockReturnValue(20_001);
+		// The adapter's clock anchors on the real timeOrigin; a far Date.now() forces it
+		// to re-anchor on the mocked wall clock instead of this process's start time.
+		const wall = vi.spyOn(Date, "now").mockReturnValue(0);
+		telemetryNow();
+		wall.mockReturnValue(20_001);
 		const clock = vi.spyOn(performance, "now").mockReturnValue(500);
 		await using f = await fixture();
 		await f.telemetry.startSpan({ name: "root" }, async (span) => {
