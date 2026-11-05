@@ -174,7 +174,7 @@ The API is also a real package: a **workspace package** of the app's repository,
 ```json
 {
 	"name": "@todo/app",
-	"version": "0.0.1",
+	"version": "0.0.2",
 	"private": true,
 	"description": "The tutorial's todo app: its API (v1 and its per-kind modules), base code and built-in plugins",
 	"type": "module",
