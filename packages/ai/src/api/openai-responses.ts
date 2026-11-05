@@ -417,10 +417,21 @@ function planResponsesChain(
 		previous.sent < messages.length &&
 		previous.digests.every((digest, index) => digest === digests[index]);
 
+	// The server keeps the assistant turn it generated, so the delta must skip it.
+	// Measured on the live gateway: a delta carrying the assistant item costs 36
+	// input tokens where the equivalent full transcript costs 30, i.e. the item is
+	// duplicated. When the expected assistant slot is not there (compaction, an
+	// edited history) the turn falls back to a full send rather than guessing.
+	const skip = reusable ? 1 : 0;
+	const hasServerTurn = previous !== undefined && messages.length > previous.sent;
+	const nextRole = hasServerTurn ? (messages[previous.sent] as { role?: string })?.role : undefined;
+	const canSkip = !reusable || skip === 0 || nextRole === "assistant";
 	return {
-		input: (reusable ? messages.slice(previous.sent) : messages) as unknown as ResponseCreateParamsStreaming["input"],
+		input: (reusable && canSkip
+			? messages.slice(previous.sent + 1)
+			: messages) as unknown as ResponseCreateParamsStreaming["input"],
 		stateful: true,
-		previousResponseId: reusable ? previous.responseId : undefined,
+		previousResponseId: reusable && canSkip ? previous.responseId : undefined,
 		commit: (responseId) => {
 			// The server must hand back an id and the turn must really have completed,
 			// otherwise the next delta would carry no reference and only lose context.
