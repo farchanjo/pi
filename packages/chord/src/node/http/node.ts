@@ -5,9 +5,18 @@
 // response when small, else the connection closes; the request's scope ends once the response is flushed or abandoned.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import type { Duplex } from "node:stream";
+import type { Duplex, Writable } from "node:stream";
+import { createGzip, gzipSync } from "node:zlib";
 import type { Context } from "../../context/index.ts";
 import type { Connection } from "./admission.ts";
+import {
+	acceptsGzip,
+	appendVary,
+	compressibleAnswer,
+	compressibleSize,
+	removeHeader,
+	setHeader,
+} from "./compression.ts";
 import { type Incoming, isForwarding } from "./incoming.ts";
 import type { Answer } from "./response.ts";
 import { UNCARRIED } from "./router.ts";
@@ -40,9 +49,14 @@ export class NodeListener {
 	}
 
 	/** A Node server for `handler` listening at `listen`; rejects with the listen error (a port in use). */
-	static async listen(handler: Handler, listen: ListenAddress, context: Context): Promise<NodeListener> {
+	static async listen(
+		handler: Handler,
+		listen: ListenAddress,
+		context: Context,
+		compression = false,
+	): Promise<NodeListener> {
 		const server = createServer((message, res) => {
-			void request(handler, message, res).catch(() => res.destroy());
+			void request(handler, message, res, compression).catch(() => res.destroy());
 		});
 		server.on("upgrade", handler.upgrade);
 		await new Promise<void>((resolve, reject) => {
@@ -196,19 +210,29 @@ export function connectionOf(message: IncomingMessage): Connection {
 }
 
 /** One request: served (an absolute-form target: 403; a URL that does not parse: 400), its answer written. */
-async function request(handler: Handler, message: IncomingMessage, res: ServerResponse): Promise<void> {
+async function request(
+	handler: Handler,
+	message: IncomingMessage,
+	res: ServerResponse,
+	compression = false,
+): Promise<void> {
 	const incoming = NodeIncoming.of(message, res);
 	if (!(incoming instanceof NodeIncoming)) {
-		return write(message, res, { answer: handler.refusal(incoming.status), finished: () => {} });
+		return write(message, res, { answer: handler.refusal(incoming.status), finished: () => {} }, compression);
 	}
-	await write(message, res, await handler.serve(incoming, connectionOf(message)));
+	await write(message, res, await handler.serve(incoming, connectionOf(message)), compression);
 }
 
 /** What `json` and `body` leave unread that is drained after the response, keeping the connection: 64 KiB. */
 const DRAIN_LIMIT = 64 * 1024;
 
 /** Writes `served`'s answer to `res`; what is left of the request's body is drained after it or closes the connection. */
-async function write(message: IncomingMessage, res: ServerResponse, { answer, finished }: Served): Promise<void> {
+async function write(
+	message: IncomingMessage,
+	res: ServerResponse,
+	{ answer, finished }: Served,
+	compression = false,
+): Promise<void> {
 	// A client gone before its answer: nothing to write.
 	if (res.closed) return finished();
 	res.once("close", finished);
@@ -216,18 +240,41 @@ async function write(message: IncomingMessage, res: ServerResponse, { answer, fi
 	const headers: string[] = [];
 	for (const [name, value] of answer.headers.lines()) headers.push(name, value);
 	if (left === "close") headers.push("connection", "close");
-	res.writeHead(answer.status, headers);
 	const { body } = answer;
-	if (body instanceof ReadableStream) await pump(body, res);
+	const gzip =
+		compression &&
+		acceptsGzip(message.headers["accept-encoding"]) &&
+		compressibleAnswer(answer, message.method ?? "GET") &&
+		(typeof body !== "string" || compressibleSize(body));
+	let compressed: Buffer | undefined;
+	if (gzip) {
+		setHeader(headers, "content-encoding", "gzip");
+		appendVary(headers, "accept-encoding");
+		if (typeof body === "string") {
+			compressed = gzipSync(body);
+			setHeader(headers, "content-length", String(compressed.byteLength));
+		} else {
+			removeHeader(headers, "content-length");
+		}
+	}
+	res.writeHead(answer.status, headers);
+	if (compressed !== undefined) res.end(compressed);
+	else if (body instanceof ReadableStream) await pump(body, res, gzip);
 	else res.end(body ?? undefined);
 	if (left === "drain") drain(message);
 }
 
 /** Writes `body` to `res` as the socket drains; a body that fails (reported by the component) destroys the connection. */
-async function pump(body: ReadableStream<Uint8Array>, res: ServerResponse): Promise<void> {
+async function pump(body: ReadableStream<Uint8Array>, res: ServerResponse, compress: boolean): Promise<void> {
 	const reader = body.getReader();
 	const cancel = (): void => void reader.cancel().catch(() => {});
 	res.once("close", cancel);
+	const gzip = compress ? createGzip() : undefined;
+	if (gzip !== undefined) {
+		gzip.once("error", () => res.destroy());
+		gzip.pipe(res);
+	}
+	const writable = gzip ?? res;
 	for (;;) {
 		let next: Awaited<ReturnType<typeof reader.read>>;
 		try {
@@ -238,22 +285,23 @@ async function pump(body: ReadableStream<Uint8Array>, res: ServerResponse): Prom
 		}
 		if (next.done) break;
 		if (res.destroyed) return;
-		if (!res.write(next.value)) await drained(res);
+		if (!writable.write(next.value)) await drained(writable);
 	}
 	res.removeListener("close", cancel);
-	res.end();
+	if (gzip !== undefined) gzip.end();
+	else res.end();
 }
 
 /** Resolves once `res` drained or closed. */
-function drained(res: ServerResponse): Promise<void> {
+function drained(writable: Writable): Promise<void> {
 	return new Promise((resolve) => {
 		const done = (): void => {
-			res.removeListener("drain", done);
-			res.removeListener("close", done);
+			writable.removeListener("drain", done);
+			writable.removeListener("close", done);
 			resolve();
 		};
-		res.once("drain", done);
-		res.once("close", done);
+		writable.once("drain", done);
+		writable.once("close", done);
 	});
 }
 

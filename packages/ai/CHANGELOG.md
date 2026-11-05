@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- OpenAI-compatible provider requests now negotiate HTTP/2 over TLS through ALPN and use Brotli for request bodies above 1 KiB by default, falling back to zstd, gzip, and finally no compression on `400`/`415` when the host has not installed its own `fetch`. It uses maximum encoder effort by default (Brotli 11, zstd 22, gzip 9); a request can override the mode and level through its `compression` field or the `x-pi-http-compression`/`x-pi-http-compression-level` headers, which are stripped before sending. The accepted encoding is remembered per origin for ten minutes, so later requests skip the rejected probes and reuse the kept-alive connection. HTTP/1.1-only servers keep HTTP/1.1, and a host-provided fetch (the coding agent's HTTP settings) stays in control
+- Response bodies are negotiated through `Accept-Encoding` in preference order Brotli, zstd, gzip, deflate and decompressed transparently over HTTP/1.1 and HTTP/2. Request bodies follow the best-to-worst chain above; HTTP has no request-encoding negotiation, and servers that only decode gzip reject `br` with 400
+
 ## [1.5.1] - 2026-11-05
 
 ### Added

@@ -411,6 +411,33 @@ export const SettingsSchema = Type.Object(
 				description: 'HTTP header or body idle timeout in milliseconds; 0 or "disabled" disables it.',
 			}),
 		),
+		httpKeepAliveTimeoutMs: Type.Optional(
+			Type.Number({
+				minimum: 1,
+				description:
+					"How long an idle HTTP connection stays open for reuse, in milliseconds (default 4000). Keep it below the server's keep-alive timeout.",
+			}),
+		),
+		http2: Type.Optional(
+			Type.Boolean({
+				description:
+					"Negotiate HTTP/2 over TLS (ALPN) and probe plaintext origins for h2c, falling back to HTTP/1.1.",
+			}),
+		),
+		httpRequestCompression: Type.Optional(
+			Type.Union(
+				[Type.Literal("off"), Type.Literal("gzip"), Type.Literal("zstd"), Type.Literal("br"), Type.Literal("auto")],
+				{
+					description:
+						'Request-body compression: "br" (default) falls back to zstd, gzip, and none; "auto" negotiates that chain from the remembered verdict; "zstd" or "gzip" forces the encoding; "off" sends bodies as they are.',
+				},
+			),
+		),
+		httpCompressionLevel: Type.Optional(
+			Type.Union([Type.Literal("max"), Type.Literal("default"), Type.Literal("fast")], {
+				description: 'Encoder effort for request compression: "max" (default), "default", or "fast".',
+			}),
+		),
 		cacheWarming: Type.Optional(
 			Type.Union([Type.Literal("off"), Type.Literal("streaming"), Type.Literal("idle")], {
 				description:

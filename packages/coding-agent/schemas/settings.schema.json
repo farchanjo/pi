@@ -669,6 +669,28 @@
       ],
       "description": "HTTP header or body idle timeout in milliseconds; 0 or \"disabled\" disables it."
     },
+    "httpKeepAliveTimeoutMs": {
+      "type": "number",
+      "minimum": 1,
+      "description": "How long an idle HTTP connection stays open for reuse, in milliseconds (default 4000). Keep it below the server's keep-alive timeout."
+    },
+    "http2": {
+      "type": "boolean",
+      "description": "Negotiate HTTP/2 over TLS (ALPN) and probe plaintext origins for h2c, falling back to HTTP/1.1."
+    },
+    "httpRequestCompression": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "off"
+        },
+        {
+          "type": "string",
+          "const": "gzip"
+        }
+      ],
+      "description": "Compress request bodies above 1 KiB with gzip (\"gzip\") or send them as they are (\"off\")."
+    },
     "cacheWarming": {
       "anyOf": [
         {

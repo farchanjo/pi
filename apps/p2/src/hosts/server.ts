@@ -2,6 +2,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createH2cServer, type Http2Server, type Http2Session } from "node:http2";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -13,7 +14,7 @@ import { type Ctx, createHost, type Host, type HostError, hostErrorText, Server 
 import { envDefaultModel } from "../runtime/default-model.ts";
 import { type DevCommand, type DevResult, parseDevCommand } from "../runtime/dev-protocol.ts";
 import { configureFetch } from "../runtime/fetch.ts";
-import { fromOrigin, sendJson } from "../runtime/http.ts";
+import { enableCompression, fromOrigin, sendJson } from "../runtime/http.ts";
 import { captureProcessLogs, processLogs } from "../runtime/logs.ts";
 import { hasLoopbackCookie, loopbackCookie } from "../runtime/loopback-cookie.ts";
 import { signIn } from "../runtime/page.ts";
@@ -80,6 +81,11 @@ export type ServerOptions = {
 	readonly workerEnv?: Readonly<Record<string, string>>;
 	/** HTTPS tunnel hosts besides loopback (default `P2_ALLOWED_HOSTS`, comma-separated). */
 	readonly allowedHosts?: readonly string[];
+	/**
+	 * Also listen for HTTP/2 cleartext on this loopback port (0 picks one; `P2_H2C_PORT` when unset, off when neither).
+	 * That listener serves plain HTTP only: a browser does not speak h2c and the WebSocket link needs HTTP/1.1.
+	 */
+	readonly h2cPort?: number;
 	/** Overrides of the server's configuration resources (tests: a fixture provider with login flows). */
 	readonly resources?: ServerResourceOptions;
 	/** Facets loaded with the core, never reloaded (disposable test probes: their routes and types). */
@@ -92,6 +98,8 @@ const WEB_BUNDLE_GRACE_MS = 60_000;
 export type P2Server = {
 	readonly host: Host;
 	readonly port: number;
+	/** The HTTP/2 cleartext listener's port, when one was started (see `ServerOptions.h2cPort`). */
+	readonly h2cPort?: number;
 	readonly dataDir: string;
 	/** The server/worker plugin selection (alphabetical). */
 	readonly plugins: readonly string[];
@@ -516,6 +524,7 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 		return access;
 	};
 	const handle = (request: IncomingMessage, response: ServerResponse): void => {
+		if (process.env.P2_COMPRESSION !== "0") enableCompression(request, response);
 		response.setHeader("Cache-Control", "no-store");
 		response.setHeader("X-Content-Type-Options", "nosniff");
 		response.setHeader("Referrer-Policy", "no-referrer");
@@ -639,6 +648,52 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 			return access !== undefined && sameOrigin(request, access.origin) ? access.principal : undefined;
 		}, BACKGROUND_CONTEXT);
 	};
+	// A second listener for HTTP/2 cleartext, when configured: the same handler, no WebSocket (HTTP/1.1 only), and
+	// compression applies like the main listener. h2c is for proxies and scripts; a browser never negotiates it.
+	const h2cSessions = new Set<Http2Session>();
+	const configuredH2cPort =
+		options.h2cPort ?? (process.env.P2_H2C_PORT === undefined ? undefined : Number(process.env.P2_H2C_PORT));
+	if (
+		configuredH2cPort !== undefined &&
+		(!Number.isInteger(configuredH2cPort) || configuredH2cPort < 0 || configuredH2cPort > 65535)
+	) {
+		throw new Error(`P2 h2c port is not a TCP port: ${String(configuredH2cPort)}`);
+	}
+	let h2c: Http2Server | undefined;
+	if (configuredH2cPort !== undefined) {
+		const server = createH2cServer((request, response) => {
+			// Http2ServerRequest/Response carry every member the handler uses (headers, method, url, socket,
+			// setHeader/writeHead/end); the upgrade path is HTTP/1.1 only and stays on the main listener.
+			const incoming = request as unknown as IncomingMessage;
+			// HTTP/2 names the authority in `:authority`; the handler (and admission) reads `host`.
+			const authority = request.headers[":authority"];
+			if (incoming.headers.host === undefined && typeof authority === "string") {
+				incoming.headers.host = authority;
+			}
+			void loaded.then(() => handle(incoming, response as unknown as ServerResponse));
+		});
+		// RFC 8441 extended CONNECT is how a WebSocket would ride HTTP/2; `ws` has no such server and the main
+		// listener owns the link, so refuse it instead of leaving the stream open.
+		server.on("stream", (stream, headers) => {
+			if (headers[":method"] !== "CONNECT") return;
+			stream.respond({ ":status": 405 });
+			stream.end();
+		});
+		server.on("session", (session: Http2Session) => {
+			h2cSessions.add(session);
+			session.once("close", () => h2cSessions.delete(session));
+		});
+		await new Promise<void>((resolve, reject) => {
+			server.once("error", reject);
+			server.listen(configuredH2cPort, "127.0.0.1", () => {
+				server.removeListener("error", reject);
+				resolve();
+			});
+		});
+		h2c = server;
+	}
+	const h2cAddress = h2c?.address();
+	const h2cPort = typeof h2cAddress === "object" && h2cAddress !== null ? h2cAddress.port : undefined;
 	const upgraded = new WeakMap<IncomingMessage, P2Principal>();
 	// Mobile's limits: frames up to 1 MiB, 4 MiB unsent output (socket-limits.ts); Chord queues calls behind its window.
 	sockets.on("connection", (socket, request: IncomingMessage) => {
@@ -679,6 +734,7 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 	return {
 		host,
 		port: actualPort,
+		...(h2cPort === undefined ? {} : { h2cPort }),
 		dataDir,
 		get plugins() {
 			return plugins;
@@ -692,6 +748,8 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 				stopDevEvents?.();
 				for (const client of sockets.clients) client.terminate();
 				await new Promise<void>((resolve) => sockets.close(() => resolve()));
+				for (const session of h2cSessions) session.destroy();
+				h2c?.close();
 				await workers.close(BACKGROUND_CONTEXT);
 				await host.close(BACKGROUND_CONTEXT);
 				p2Plugins.close();

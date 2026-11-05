@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added `compression` to `HttpOptions`: Chord's Node listener gzips an answer whose type allows it when the client accepts gzip, setting `Content-Encoding`, `Vary` and the compressed length. Off by default.
+
 ## [1.5.1] - 2026-11-05
 
 ### Breaking Changes

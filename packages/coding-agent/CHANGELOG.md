@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added the `http2` and `httpRequestCompression` settings. `http2` negotiates HTTP/2 over TLS through ALPN and probes plaintext origins for h2c, falling back to HTTP/1.1 when an origin does not answer; an HTTP proxy disables h2c. `httpRequestCompression` defaults to `"br"`: request bodies above 1 KiB try Brotli, zstd, gzip, and then no compression, remembering the encoding each origin accepted for ten minutes so later requests skip the failed probes. `"gzip"` keeps gzip-only and `"off"` sends plain bodies. `httpCompressionLevel` selects `"max"` (the default; Brotli 11, zstd 22, gzip 9), `"default"` (5/3/6), or `"fast"` (1/1/1). `httpKeepAliveTimeoutMs` controls how long an idle connection stays open for reuse (default 4000 ms, undici's). All are in the Settings menu. The standalone executable now bundles npm undici, so HTTP/2, h2c, request compression and keep-alive work there too.
+
 ## [1.5.1] - 2026-11-05
 
 ### Breaking Changes

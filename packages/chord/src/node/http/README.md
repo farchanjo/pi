@@ -17,6 +17,7 @@ const http = createHttp(server, {
 	links: { path: "/chord", options: (request, principal) => ({ limits, maxPayload }),     // or a value
 		opened: (request, principal) => () => linkClosed() },       // called per accepted link; its return at its close
 	closeTimeout: 30_000,
+	compression: true,     // gzip answers whose type allows it when the client accepts it (off by default)
 	onError: (error) => log(error),                 // HttpError
 }, ctx);
 // the app's core facet: who someone is (a registry: plugins may add authenticators too)

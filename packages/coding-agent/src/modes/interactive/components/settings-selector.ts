@@ -12,7 +12,12 @@ import {
 	Text,
 	type WheelScrollLines,
 } from "@earendil-works/pi-tui";
-import { formatHttpIdleTimeoutMs, HTTP_IDLE_TIMEOUT_CHOICES } from "../../../core/http-dispatcher.ts";
+import {
+	formatHttpIdleTimeoutMs,
+	formatHttpKeepAliveTimeoutMs,
+	HTTP_IDLE_TIMEOUT_CHOICES,
+	HTTP_KEEP_ALIVE_TIMEOUT_CHOICES,
+} from "../../../core/http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "../../../core/settings-defaults.ts";
 import {
 	CACHE_WARMING_MODES,
@@ -73,6 +78,10 @@ export interface SettingsConfig {
 	transport: Transport;
 	sessionShareDestination: SessionShareDestination;
 	httpIdleTimeoutMs: number;
+	httpKeepAliveTimeoutMs: number;
+	http2: boolean;
+	httpRequestCompression: "auto" | "br" | "zstd" | "gzip" | "off";
+	httpCompressionLevel: "max" | "default" | "fast";
 	cacheWarmingMode: CacheWarmingMode;
 	thinkingLevel: ThinkingLevel;
 	availableThinkingLevels: ThinkingLevel[];
@@ -115,6 +124,10 @@ export interface SettingsCallbacks {
 	onTransportChange: (transport: Transport) => void;
 	onSessionShareDestinationChange: (destination: SessionShareDestination) => void;
 	onHttpIdleTimeoutMsChange: (timeoutMs: number) => void;
+	onHttpKeepAliveTimeoutMsChange: (timeoutMs: number) => void;
+	onHttp2Change: (enabled: boolean) => void;
+	onHttpRequestCompressionChange: (mode: "auto" | "br" | "zstd" | "gzip" | "off") => void;
+	onHttpCompressionLevelChange: (level: "max" | "default" | "fast") => void;
 	onCacheWarmingModeChange: (mode: CacheWarmingMode) => void;
 	onModelThinkingLevelChange: (provider: string, modelId: string, level: ThinkingLevel) => void;
 	onModelThinkingLevelRemove: (provider: string, modelId: string) => void;
@@ -529,6 +542,37 @@ export class SettingsSelectorComponent extends Container {
 				values: HTTP_IDLE_TIMEOUT_CHOICES.map((choice) => choice.label),
 			},
 			{
+				id: "http-keep-alive-timeout",
+				label: "HTTP keep-alive",
+				description:
+					"How long an idle connection stays open for reuse; keep it below the server's keep-alive timeout",
+				currentValue: formatHttpKeepAliveTimeoutMs(config.httpKeepAliveTimeoutMs),
+				values: HTTP_KEEP_ALIVE_TIMEOUT_CHOICES.map((choice) => choice.label),
+			},
+			{
+				id: "http2",
+				label: "HTTP/2",
+				description:
+					"Negotiate HTTP/2 over TLS (ALPN) and probe plaintext origins for h2c, falling back to HTTP/1.1",
+				currentValue: String(config.http2),
+				values: ["false", "true"],
+			},
+			{
+				id: "http-request-compression",
+				label: "Request compression",
+				description:
+					"Best-to-worst request compression: Brotli, zstd, gzip, then none; per-server choice is remembered",
+				currentValue: config.httpRequestCompression,
+				values: ["auto", "br", "zstd", "gzip", "off"],
+			},
+			{
+				id: "http-compression-level",
+				label: "Compression level",
+				description: "Encoder effort for request compression; max is the default",
+				currentValue: config.httpCompressionLevel,
+				values: ["max", "default", "fast"],
+			},
+			{
 				id: "cache-warming-mode",
 				label: "Cache warming",
 				description:
@@ -921,6 +965,34 @@ export class SettingsSelectorComponent extends Container {
 						}
 						break;
 					}
+					case "http-keep-alive-timeout": {
+						const choice = HTTP_KEEP_ALIVE_TIMEOUT_CHOICES.find((item) => item.label === newValue);
+						if (choice) {
+							callbacks.onHttpKeepAliveTimeoutMsChange(choice.timeoutMs);
+						}
+						break;
+					}
+					case "http2":
+						callbacks.onHttp2Change(newValue === "true");
+						break;
+					case "http-request-compression":
+						callbacks.onHttpRequestCompressionChange(
+							newValue === "gzip"
+								? "gzip"
+								: newValue === "br"
+									? "br"
+									: newValue === "zstd"
+										? "zstd"
+										: newValue === "off"
+											? "off"
+											: "auto",
+						);
+						break;
+					case "http-compression-level":
+						callbacks.onHttpCompressionLevelChange(
+							newValue === "default" || newValue === "fast" ? newValue : "max",
+						);
+						break;
 					case "cache-warming-mode":
 						callbacks.onCacheWarmingModeChange(newValue as CacheWarmingMode);
 						break;

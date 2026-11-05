@@ -21,6 +21,8 @@ npm start
 ```
 
 Open http://127.0.0.1:8788. `PORT` changes the port; `P2_DATA_DIR` changes the default data directory `~/.pi/p2`.
+
+`P2_HTTP2=1` negotiates HTTP/2 over TLS and probes plaintext origins for h2c, falling back to HTTP/1.1. `P2_HTTP_REQUEST_GZIP=1` gzips request bodies above 1 KiB. `P2_HTTP_KEEP_ALIVE_TIMEOUT_MS=30000` keeps idle connections open longer (default 4000, keep it below the server timeout). `P2_H2C_PORT=8789` starts a second HTTP/2 cleartext listener (plain HTTP only: no WebSocket, and browsers do not speak h2c). `P2_COMPRESSION=0` turns off response gzip.
 `P2_FAKE=1 npm start` uses a fake provider for demos, but tools still act on real files.
 See [development notes](docs/p2-notes.md) for dev mode, architecture and testing.
 Code mode scripts can orchestrate one-shot agents (`tools.agent`); [docs/workflows.md](docs/workflows.md) has workflow

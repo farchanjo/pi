@@ -124,6 +124,10 @@ See [Themes](themes.md) and [Terminal Setup](terminal-setup.md) for format and p
 | `transport` | `"auto" \| "sse" \| "websocket" \| "websocket-cached"` | `"auto"` | Preferred transport for AI providers that support multiple transports. |
 | `httpProxy` | string | None | Proxy URL applied as `HTTP_PROXY` and `HTTPS_PROXY` for Pi-managed HTTP clients. **Can only be set in agent-directory settings.** |
 | `httpIdleTimeoutMs` | number \| `"disabled"` | `300000` | HTTP header and body idle timeout in milliseconds. Set to `0` or `"disabled"` to disable. |
+| `httpKeepAliveTimeoutMs` | number | `4000` | How long an idle HTTP connection stays open for reuse, in milliseconds. Keep it below the server keep-alive timeout (Node servers default to 5 s). |
+| `http2` | boolean | `false` | Negotiate HTTP/2 over TLS (ALPN) and probe plaintext origins for h2c. Origins that do not answer the h2c probe stay on HTTP/1.1; an HTTP proxy disables h2c. |
+| `httpRequestCompression` | `"br" \| "auto" \| "zstd" \| "gzip" \| "off"` | `"br"` | Request bodies above 1 KiB: `"br"` (default) falls back to zstd and gzip, then no compression, remembering each origin; `"auto"` negotiates the same chain; `"zstd"` or `"gzip"` forces the encoding; `"off"` sends plain bodies. |
+| `httpCompressionLevel` | `"max" \| "default" \| "fast"` | `"max"` | Encoder effort for request compression. `"max"` uses Brotli 11, zstd 22, and gzip 9; `"default"` uses 5/3/6; `"fast"` uses 1/1/1. |
 | `websocketConnectTimeoutMs` | number \| `"disabled"` | `15000` | WebSocket connection timeout in milliseconds. Set to `0` or `"disabled"` to disable. |
 | `retry.enabled` | boolean | `true` | Enable automatic agent-level retry for transient failures. |
 | `retry.maxRetries` | number | `3` | Maximum agent-level retry attempts. |

@@ -94,7 +94,11 @@ import type {
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.ts";
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
-import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
+import {
+	configureHttpDispatcherFromSettings,
+	formatHttpIdleTimeoutMs,
+	formatHttpKeepAliveTimeoutMs,
+} from "../../core/http-dispatcher.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
 import type { McpHttpServerConfig } from "../../core/mcp-servers.ts";
 import { createCompactionSummaryMessage, createCustomMessage } from "../../core/messages.ts";
@@ -2171,7 +2175,7 @@ export class InteractiveMode {
 	private applyRuntimeSettings(): void {
 		setCapabilityOverrides(this.settingsManager.getTerminalCapabilityOverrides());
 		this.ensurePngTranscoder();
-		configureHttpDispatcher(this.settingsManager.getHttpIdleTimeoutMs());
+		configureHttpDispatcherFromSettings(this.settingsManager);
 		this.applyFullscreenScrollbarSetting();
 		if (this.renderer instanceof TuiAltScreen) {
 			this.renderer.setCopyOnSelect(this.settingsManager.getFullscreenCopyOnSelect());
@@ -5058,6 +5062,10 @@ export class InteractiveMode {
 					transport: this.settingsManager.getTransport(),
 					sessionShareDestination: this.settingsManager.getSessionShareDestination(),
 					httpIdleTimeoutMs: this.settingsManager.getHttpIdleTimeoutMs(),
+					httpKeepAliveTimeoutMs: this.settingsManager.getHttpKeepAliveTimeoutMs(),
+					http2: this.settingsManager.getHttp2Enabled(),
+					httpRequestCompression: this.settingsManager.getHttpRequestCompression(),
+					httpCompressionLevel: this.settingsManager.getHttpCompressionLevel(),
 					cacheWarmingMode: this.settingsManager.getCacheWarmingMode(),
 					thinkingLevel: this.settingsManager.getDefaultThinkingLevel() ?? DEFAULT_THINKING_LEVEL,
 					availableThinkingLevels: [...THINKING_LEVEL_OPTIONS],
@@ -5133,8 +5141,28 @@ export class InteractiveMode {
 					},
 					onHttpIdleTimeoutMsChange: (timeoutMs) => {
 						this.settingsManager.setHttpIdleTimeoutMs(timeoutMs);
-						configureHttpDispatcher(timeoutMs);
+						configureHttpDispatcherFromSettings(this.settingsManager);
 						this.showStatus(`HTTP idle timeout: ${formatHttpIdleTimeoutMs(timeoutMs)}`);
+					},
+					onHttpKeepAliveTimeoutMsChange: (timeoutMs) => {
+						this.settingsManager.setHttpKeepAliveTimeoutMs(timeoutMs);
+						configureHttpDispatcherFromSettings(this.settingsManager);
+						this.showStatus(`HTTP keep-alive: ${formatHttpKeepAliveTimeoutMs(timeoutMs)}`);
+					},
+					onHttp2Change: (enabled) => {
+						this.settingsManager.setHttp2Enabled(enabled);
+						configureHttpDispatcherFromSettings(this.settingsManager);
+						this.showStatus(`HTTP/2: ${enabled ? "enabled" : "disabled"}`);
+					},
+					onHttpRequestCompressionChange: (mode) => {
+						this.settingsManager.setHttpRequestCompression(mode);
+						configureHttpDispatcherFromSettings(this.settingsManager);
+						this.showStatus(`HTTP request compression: ${mode}`);
+					},
+					onHttpCompressionLevelChange: (level) => {
+						this.settingsManager.setHttpCompressionLevel(level);
+						configureHttpDispatcherFromSettings(this.settingsManager);
+						this.showStatus(`HTTP compression level: ${level}`);
 					},
 					onCacheWarmingModeChange: (mode) => {
 						this.session.setCacheWarmingMode(mode);

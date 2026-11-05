@@ -48,6 +48,8 @@ export type HttpOptions = {
 	readonly links?: LinksOptions;
 	/** How long `close` waits for running requests and closing sockets: 30 s by default. */
 	readonly closeTimeout?: number;
+	/** Gzip answers whose type allows it when the client accepts it; off by default. */
+	readonly compression?: boolean;
 	/**
 	 * The telemetry adapter (the host's): each routed request is a `chord.http` root span, its scope's `ctx` under it; a
 	 * W3C `traceparent` is extracted only from a request a contributed relay verified. NOOP by default.
@@ -506,7 +508,7 @@ class Component<P extends Principal> implements HttpComponent<P>, Handler {
 
 	/** The listener's open: Chord's own Node server listening at `listen`. */
 	async #listen(listen: ListenAddress, context: Context): Promise<NodeListener> {
-		const listener = await NodeListener.listen(this, listen, context);
+		const listener = await NodeListener.listen(this, listen, context, this.#options.compression === true);
 		this.#listening.resolve(listener.address);
 		return listener;
 	}

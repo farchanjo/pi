@@ -8,7 +8,11 @@ import lockfile from "proper-lockfile";
 import { CONFIG_DIR_NAME, getAgentDir } from "../config.ts";
 import { normalizePath, resolvePath } from "../utils/paths.ts";
 import { stripBom } from "../utils/text.ts";
-import { DEFAULT_HTTP_IDLE_TIMEOUT_MS, parseHttpIdleTimeoutMs } from "./http-dispatcher.ts";
+import {
+	DEFAULT_HTTP_IDLE_TIMEOUT_MS,
+	DEFAULT_HTTP_KEEP_ALIVE_TIMEOUT_MS,
+	parseHttpIdleTimeoutMs,
+} from "./http-dispatcher.ts";
 import { SETTINGS_DEFAULTS } from "./settings-defaults.ts";
 import type {
 	CacheWarmingMode,
@@ -935,6 +939,56 @@ export class SettingsManager {
 		}
 		this.globalSettings.httpIdleTimeoutMs = Math.floor(timeoutMs);
 		this.markModified("httpIdleTimeoutMs");
+		this.save();
+	}
+
+	/** How long an idle HTTP connection stays open for reuse, in milliseconds. */
+	getHttpKeepAliveTimeoutMs(): number {
+		const timeoutMs = this.settings.httpKeepAliveTimeoutMs ?? DEFAULT_HTTP_KEEP_ALIVE_TIMEOUT_MS;
+		return Number.isFinite(timeoutMs) && timeoutMs > 0 ? Math.floor(timeoutMs) : DEFAULT_HTTP_KEEP_ALIVE_TIMEOUT_MS;
+	}
+
+	setHttpKeepAliveTimeoutMs(timeoutMs: number): void {
+		if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+			throw new Error(`Invalid httpKeepAliveTimeoutMs setting: ${String(timeoutMs)}`);
+		}
+		this.globalSettings.httpKeepAliveTimeoutMs = Math.floor(timeoutMs);
+		this.markModified("httpKeepAliveTimeoutMs");
+		this.save();
+	}
+
+	/** Whether HTTP/2 (ALPN over TLS) and h2c on plaintext origins are enabled for pi's HTTP clients. */
+	getHttp2Enabled(): boolean {
+		return this.settings.http2 === true;
+	}
+
+	setHttp2Enabled(enabled: boolean): void {
+		this.globalSettings.http2 = enabled;
+		this.markModified("http2");
+		this.save();
+	}
+
+	/** How pi compresses request bodies: `"auto"` is best-to-worst, `"gzip"` is gzip only, `"off"` sends them as they are. */
+	getHttpRequestCompression(): "auto" | "br" | "zstd" | "gzip" | "off" {
+		const mode = this.settings.httpRequestCompression;
+		return mode === "off" || mode === "gzip" || mode === "br" || mode === "zstd" ? mode : "br";
+	}
+
+	setHttpRequestCompression(mode: "auto" | "br" | "zstd" | "gzip" | "off"): void {
+		this.globalSettings.httpRequestCompression = mode;
+		this.markModified("httpRequestCompression");
+		this.save();
+	}
+
+	/** Encoder effort for request compression; `"max"` when unset. */
+	getHttpCompressionLevel(): "max" | "default" | "fast" {
+		const level = this.settings.httpCompressionLevel;
+		return level === "default" || level === "fast" ? level : "max";
+	}
+
+	setHttpCompressionLevel(level: "max" | "default" | "fast"): void {
+		this.globalSettings.httpCompressionLevel = level;
+		this.markModified("httpCompressionLevel");
 		this.save();
 	}
 
