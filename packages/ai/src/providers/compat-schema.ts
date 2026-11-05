@@ -367,6 +367,15 @@ export const OpenAICompletionsCompatSchema = openObject(OpenAICompletionsCompatP
 });
 
 const OpenAIResponsesCompatProperties = {
+	// DSV41 delta patch: a Responses server that implements the stateful store
+	// (`store: true` + `previous_response_id`) lets the client ship only the new
+	// turn per request instead of the whole transcript. Off by default because
+	// OpenAI's own endpoints bill and behave differently with storing enabled.
+	supportsStatefulStore: optionalCompatBoolean({
+		description:
+			"Whether the provider keeps stored responses so a follow-up can chain with previous_response_id. Default: false.",
+		default: false,
+	}),
 	supportsDeveloperRole: optionalCompatBoolean({
 		description: "Whether the provider supports the developer role instead of system.",
 		default: true,
