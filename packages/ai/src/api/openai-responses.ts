@@ -374,8 +374,12 @@ const responsesChains = new Map<string, ResponsesChain>();
 const RESPONSES_CHAIN_MAX = 256;
 const RESPONSES_CHAIN_TTL_MS = 60 * 60 * 1000;
 
-function digestInput(item: unknown): string {
+export function digestInput(item: unknown): string {
 	return createHash("sha1").update(JSON.stringify(item) ?? "").digest("hex");
+}
+
+export function resetResponsesChainsForTest(): void {
+	responsesChains.clear();
 }
 
 function pruneResponsesChains(): void {
@@ -390,7 +394,7 @@ function pruneResponsesChains(): void {
 	}
 }
 
-type ResponsesChainPlan = {
+export type ResponsesChainPlan = {
 	input: ResponseCreateParamsStreaming["input"];
 	stateful: boolean;
 	previousResponseId?: string;
@@ -398,7 +402,7 @@ type ResponsesChainPlan = {
 	drop: () => void;
 };
 
-function planResponsesChain(
+export function planResponsesChain(
 	sessionId: string | undefined,
 	messages: readonly unknown[],
 	compat: Required<OpenAIResponsesCompat>,
@@ -425,7 +429,12 @@ function planResponsesChain(
 	const skip = reusable ? 1 : 0;
 	const hasServerTurn = previous !== undefined && messages.length > previous.sent;
 	const nextRole = hasServerTurn ? (messages[previous.sent] as { role?: string })?.role : undefined;
-	const canSkip = !reusable || skip === 0 || nextRole === "assistant";
+	// Only chain when the delta would carry something: the server turn alone is not
+	// a request, and an empty input would burn a round trip for nothing.
+	const canSkip =
+		!reusable ||
+		skip === 0 ||
+		(nextRole === "assistant" && messages.length > previous.sent + 1);
 	return {
 		input: (reusable && canSkip
 			? messages.slice(previous.sent + 1)

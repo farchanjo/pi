@@ -1716,6 +1716,46 @@ Browser compatibility notes:
 - OAuth login flows are Node-only. They are lazy-loaded behind bundler-opaque imports, so registering an OAuth-capable provider does not pull Node-only code into a browser bundle — only actually logging in would.
 - Use a server-side proxy or backend service if you need Bedrock or OAuth-based auth from a web app.
 
+## Stateful Responses (delta upload)
+
+The `openai-responses` adapter can keep a conversation server-side and ship only
+the new turn, instead of re-uploading the whole transcript on every request. It is
+opt-in per provider:
+
+```ts
+{
+  api: "openai-responses",
+  compat: { supportsStatefulStore: true },
+}
+```
+
+When enabled and the caller passes a stable `sessionId`, the adapter:
+
+- sends `store: true` and remembers the `response.id` of each completed turn;
+- on the next turn, sends only the messages the server has not seen, plus
+  `previous_response_id`;
+- refuses to chain when the incoming prefix is not byte-identical to what was
+  already sent (an edited message, a compacted prefix, a changed system prompt);
+- skips the assistant turn, because a stateful server stores the output it
+  generated. Measured against a SGLang gateway: a delta that re-sends the
+  assistant item costs 36 input tokens where the equivalent full transcript costs
+  30, and the delta without it costs exactly 30;
+- falls back to a full send inside the same call when the server rejects the
+  reference (an evicted or unknown id answers 404), so an eviction never costs the
+  turn;
+- never sends an empty delta, never stores an empty response id, and bounds its
+  per-session table (256 sessions, 1 h TTL).
+
+Behaviour worth knowing when wiring it up:
+
+- The engine still receives the full prompt (the server rebuilds it locally), so
+  prefix caching and time-to-first-token are unchanged; the win is upload bytes.
+- The store on the server side needs a bound of its own. A stock SGLang store has
+  no TTL and no size limit; cap it before enabling.
+- A field the endpoint does not implement (hosted tools, `conversation`,
+  `context_management`) can come back as HTTP 200 with `status: "incomplete"` and
+  no output. Do not treat a 200 as proof that a hosted tool ran.
+
 ## Bundling and Tree Shaking
 
 For small bundles and low-overhead unbundled scripts, import the model runtime and only the providers you need:
