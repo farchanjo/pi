@@ -471,18 +471,15 @@ describe("GitHub Copilot OAuth device flow", () => {
 			notify: () => {},
 		});
 
-		// models.login reaches the device-code request on a later microtask than the
-		// other cases, so drain it first; then run out the device poll interval and
-		// every Retry-After backoff the policy update schedules.
 		// models.login reaches the device-code request after the advance below has
 		// already returned, so keep advancing (each await also turns the real event
-		// loop) until the login settles.
+		// loop) until the login settles. The real 0 ms timer, not the faked clock,
+		// spins the loop only while the login is waiting, so a busy machine cannot
+		// run it out.
 		let settled = false;
 		void loginPromise.then(() => {
 			settled = true;
 		});
-		// Real time, not the faked clock: the loop only spins while the login is
-		// waiting, and a busy machine must not run it out.
 		const deadline = process.hrtime.bigint() + 10_000_000_000n;
 		while (!settled && process.hrtime.bigint() < deadline) {
 			await new Promise((resolve) => realSetTimeout(resolve, 0));

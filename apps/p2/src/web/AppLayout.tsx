@@ -1,8 +1,5 @@
 import { useRef, useState } from "react";
-import { Access, grantMode } from "../runtime/access.ts";
-
-import { liveIn } from "../runtime/refs.ts";
-import { closeLayers, Slot, useDrawer, useObject, useReadable, useRoute, useStatus } from "../runtime/web.tsx";
+import { closeLayers, Slot, useCanWrite, useDrawer, useRoute } from "../runtime/web.tsx";
 import { useComposerState } from "./composer-state.tsx";
 import { useDrawerSwipe } from "./drawer-swipe.ts";
 import { OwnerNotices } from "./OwnerNotices.tsx";
@@ -12,10 +9,7 @@ export function AppLayout() {
 	const drawer = useDrawer(),
 		route = useRoute(),
 		collapsed = useSidebarCollapsed();
-	const access = useObject(Access, {}),
-		guest = useReadable(liveIn(access, "guest")?.grant);
-	const canWrite =
-		(useStatus(access) === "live" && access?.variant === "owner") || grantMode(guest, route.session) === "full";
+	const canWrite = useCanWrite(route.session);
 	const { addFiles } = useComposerState();
 	const [draggingFiles, setDraggingFiles] = useState(false);
 	const dragDepth = useRef(0);
@@ -67,6 +61,8 @@ export function AppLayout() {
 				<Slot name="main" fallback={<div className="hero">No chat plugin</div>} />
 			</main>
 			<Slot name="workspace-panel" />
+			{/* A turn's steps, docked at the right on a wide screen (activity/Sheet.tsx renders into it). */}
+			<div className="side-dock" id="side-dock" data-testid="side-dock" />
 		</div>
 	);
 }

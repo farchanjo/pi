@@ -4,7 +4,7 @@
 // the route cannot serve says so. Fake provider (`artifact <json>`), disposable sessions.
 
 import assert from "node:assert/strict";
-import { rmSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
@@ -101,18 +101,18 @@ describe("inline artifacts in Chromium", { skip: !browserTests }, () => {
 		await browser.metrics(390, 844);
 		await browser.open(`http://127.0.0.1:${fixture.server.port}/s/${id}`);
 		await browser.wait(
-			`document.querySelector('.inline-artifact[data-artifact="notes:1"] .md h3')?.textContent==='Inline heading'`,
+			`document.querySelector('.inline-artifact[data-artifact="notes:1"] .elanor-markdown h3')?.textContent==='Inline heading'`,
 		);
 		assert.equal(
 			await browser.evaluate<string>(
-				`document.querySelector('.inline-artifact[data-artifact="notes:1"] .md strong').textContent`,
+				`document.querySelector('.inline-artifact[data-artifact="notes:1"] .elanor-markdown strong').textContent`,
 			),
 			"bold",
 		);
 		// Below its card, which stays.
 		assert.equal(
 			await browser.evaluate<boolean>(
-				`document.querySelector('.file-tool .file-card + .inline-artifact')?.dataset.artifact==='notes:1'`,
+				`document.querySelector('[data-testid=results] .file-card + .inline-artifact')?.dataset.artifact==='notes:1'`,
 			),
 			true,
 		);
@@ -206,8 +206,9 @@ describe("inline artifacts in Chromium", { skip: !browserTests }, () => {
 			{ name: "gone", title: "Gone", type: "svg", content: DIAGRAM },
 			{ name: "lost", title: "Lost", type: "markdown", content: "# Lost" },
 		]);
-		for (const name of ["gone", "lost"])
-			rmSync(join(fixture.dataDir, "artifacts", id, name, "1"), { recursive: true, force: true });
+		// Their bytes gone from the session's files (the session has only these two).
+		const blobs = join(fixture.dataDir, "sessions", id, "files", "blobs");
+		for (const blob of readdirSync(blobs)) rmSync(join(blobs, blob), { force: true });
 		await browser.metrics(1280, 900);
 		await browser.open(`http://127.0.0.1:${fixture.server.port}/s/${id}`);
 		for (const name of ["gone", "lost"])

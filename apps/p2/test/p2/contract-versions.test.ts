@@ -1,25 +1,31 @@
 // Pages, TUIs and plugins built before a deploy keep working: the providers of `Sessions`, `SessionTree` and `Catalog`
 // still bind the versions released before `/tree` and its branch labels, through their `accepts`, and map the current
 // state and results back. The old contracts below are copied verbatim from the releases that bundled them
-// (`Sessions` v3 and `Catalog` v2 from 0a730c8a7, `Sessions` v4, `Catalog` v3 and `SessionTree` v1 from e88525506), so
-// their fingerprints are the ones old bundles send.
+// (`Sessions` v3 and `Catalog` v2 from 0a730c8a7, `Sessions` v4, `Catalog` v3 and `SessionTree` v1 from e88525506,
+// `Sessions` v5 from 9ff0ebfd0, `Envs` v1 from 2a32a605a and v2 from d07548004), so their fingerprints are the ones
+// old bundles send.
 
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { arr, bool, int, nul, num, obj, opt, str, union } from "@earendil-works/pi-schema";
 import {
 	BACKGROUND_CONTEXT,
+	DirectoryListingSchema,
+	evolve,
 	literal,
 	local,
 	ModelRefSchema,
 	method,
 	param,
+	propertiesOf,
 	remote,
 	serverHost,
 	sessionHost,
 	ThinkingLevelSchema,
 } from "@p2/app/v1";
 import { Chat } from "../../plugins/chat/contract.ts";
+import { Envs, EnvTestSchema, SandboxStatusSchema } from "../../plugins/envs/contract.ts";
+import { SandboxMountSchema, SshEnvConfigSchema } from "../../plugins/envs/schema.ts";
 import { CreateSchema, MAX_TITLE, type Session, Sessions } from "../../plugins/sessions/contract.ts";
 import { SessionStatus } from "../../plugins/status/contract.ts";
 import { SessionTree } from "../../plugins/tree/contract.ts";
@@ -122,6 +128,44 @@ const SessionsV4 = remote("p2.sessions", {
 				renameSelf: method(obj({ title: Title }), obj({ previous: str() })),
 				configureSelf: method(obj({ model: opt(ModelRefSchema), thinkingLevel: opt(ThinkingLevelSchema) })),
 				treeSelf: method(obj({ main: int({ minimum: 1 }), branches: arr(BranchSchemaV4) })),
+			},
+		},
+	},
+});
+
+/** 9ff0ebfd0's `BranchSchema` and `SessionSchema`: a branch label may be null. */
+const BranchSchemaV5 = obj({ conversation: int({ minimum: 1 }), label: union([str(), nul()]) });
+const SessionSchemaV5 = obj({ ...propertiesOf(SessionSchemaV4), branches: arr(BranchSchemaV5) });
+
+/** `Sessions` as 9ff0ebfd0 declared it (before client-chosen IDs and lifecycle operations). */
+const SessionsV5 = remote("p2.sessions", {
+	version: 5,
+	params: {},
+	hostAddress: serverHost,
+	variants: {
+		owner: {
+			state: { sessions: arr(SessionSchemaV5), defaultCwd: str(), defaultEnv: union([str(), nul()]) },
+			methods: {
+				create: method(CreateSchema, SessionSchemaV5),
+				relocate: method(obj({ id: str(), cwd: str({ minLength: 1 }), env: union([str(), nul()]) })),
+				rename: method(obj({ id: str(), title: Title })),
+				pin: method(obj({ id: str(), pinned: bool() })),
+				archive: method(Id),
+				restore: method(Id),
+				clone: method(Id, SessionSchemaV5),
+				fork: method(
+					obj({ id: str(), conversation: int({ minimum: 1 }), before: int({ minimum: 1 }) }),
+					SessionSchemaV5,
+				),
+			},
+		},
+		guest: { state: { sessions: arr(SessionSchemaV5) } },
+		worker: {
+			state: { session: union([SessionSchemaV5, nul()]) },
+			methods: {
+				renameSelf: method(obj({ title: Title }), obj({ previous: str() })),
+				configureSelf: method(obj({ model: opt(ModelRefSchema), thinkingLevel: opt(ThinkingLevelSchema) })),
+				treeSelf: method(obj({ main: int({ minimum: 1 }), branches: arr(BranchSchemaV5) })),
 			},
 		},
 	},
@@ -234,6 +278,82 @@ const SessionTreeV1 = remote("p2.tree", {
 	},
 });
 
+/** The environment configuration of `Envs` v1 and v2: sandboxes without `diskGb` (the SSH schema is unchanged). */
+const EnvConfigSchemaV2 = union([
+	SshEnvConfigSchema,
+	obj({
+		type: literal("gondolin"),
+		host: str({ minLength: 1, maxLength: 32 }),
+		image: opt(str({ minLength: 1, maxLength: 255 })),
+		mounts: opt(arr(SandboxMountSchema, { maxItems: 16 })),
+		allowHosts: opt(arr(str({ minLength: 1, maxLength: 255 }), { maxItems: 256 })),
+		cpus: opt(int({ minimum: 1, maximum: 64 })),
+		memoryMb: opt(int({ minimum: 256, maximum: 262144 })),
+	}),
+]);
+
+/** 2a32a605a's `Envs` (version 1): rows without `users`, `delete` without `force`. */
+const EnvName = obj({ name: str() });
+const EnvKey = obj({ publicKey: str(), identityFile: str() });
+const EnvSummarySchemaV1 = obj({ name: str(), config: EnvConfigSchemaV2, sessions: num(), test: opt(EnvTestSchema) });
+const EnvsV1 = remote("p2.envs", {
+	version: 1,
+	params: {},
+	hostAddress: serverHost,
+	variants: {
+		owner: {
+			state: { envs: arr(EnvSummarySchemaV1), failure: union([str(), nul()]) },
+			methods: {
+				list: method(undefined, arr(EnvSummarySchemaV1)),
+				warm: method(),
+				save: method(obj({ name: str(), config: EnvConfigSchemaV2 })),
+				delete: method(EnvName),
+				test: method(EnvName, EnvTestSchema),
+				acceptHostKey: method(obj({ name: str(), lines: arr(str()) })),
+				forgetHostKey: method(EnvName),
+				generateKey: method(EnvName, EnvKey),
+				uploadKey: method(obj({ name: str(), key: str({ maxLength: 16384 }) }), EnvKey),
+				publicKey: method(EnvName, union([str(), nul()])),
+				listDirectory: method(obj({ env: opt(str()), path: str() }), DirectoryListingSchema),
+				sandboxStatus: method(EnvName, SandboxStatusSchema),
+				sandboxStart: method(EnvName, SandboxStatusSchema),
+				sandboxStop: method(EnvName, SandboxStatusSchema),
+			},
+		},
+	},
+});
+
+/** d07548004's `Envs` (version 2): rows with `users`, `delete` with `force`, sandboxes without `diskGb`. */
+const EnvsV2 = evolve(EnvsV1, (e) =>
+	e
+		.state(
+			"owner",
+			"envs",
+			arr(
+				obj({
+					name: str(),
+					config: EnvConfigSchemaV2,
+					sessions: num(),
+					users: opt(arr(obj({ id: str(), title: str(), main: num(), archived: bool() }))),
+					test: opt(EnvTestSchema),
+				}),
+			),
+		)
+		.result(
+			"list",
+			arr(
+				obj({
+					name: str(),
+					config: EnvConfigSchemaV2,
+					sessions: num(),
+					users: opt(arr(obj({ id: str(), title: str(), main: num(), archived: bool() }))),
+					test: opt(EnvTestSchema),
+				}),
+			),
+		)
+		.args("delete", obj({ name: str(), force: opt(bool()) })),
+);
+
 describe("older contract versions against the current server (fake provider)", () => {
 	let fixture: Fixture;
 	let owner: Host;
@@ -262,6 +382,15 @@ describe("older contract versions against the current server (fake provider)", (
 	});
 	after(async () => {
 		await fixture?.close();
+	});
+
+	it("binds Sessions v5: rows as they are, create answered with its row", async () => {
+		const ref = await boundIn(owner, SessionsV5, {}, "owner");
+		const rows = await until(ref.sessions, (list) => list.some((row) => row.id === session.id));
+		assert.equal(rows.find((each) => each.id === session.id)?.main, branch);
+		const created = await ref.create({ cwd: fixture.workspace, title: "From a v5 tab" }, BACKGROUND_CONTEXT);
+		assert.equal(created.title, "From a v5 tab");
+		ref.release();
 	});
 
 	it("binds Sessions v4: a null branch label reads as the session title", async () => {
@@ -296,6 +425,34 @@ describe("older contract versions against the current server (fake provider)", (
 		assert.equal(tree.nodes.length, 2, "conversation 1's message and answer");
 		for (const node of tree.nodes) assert.deepEqual(Object.keys(node).sort(), ["entry", "parent", "role", "text"]);
 		ref.release();
+	});
+
+	it("binds Envs v1: rows without users; its delete is never forced", async () => {
+		const current = await holdIn(owner, Envs, {}, "owner");
+		await current.save({ name: "old-tab", config: { type: "ssh", host: "old.example" } }, BACKGROUND_CONTEXT);
+		const ref = await boundIn(owner, EnvsV1, {}, "owner");
+		const rows = await until(ref.envs, (list) => list.some((row) => row.name === "old-tab"));
+		assert.deepEqual(Object.keys(rows.find((row) => row.name === "old-tab")!).sort(), ["config", "name", "sessions"]);
+		await ref.delete({ name: "old-tab" }, BACKGROUND_CONTEXT);
+		await until(ref.envs, (list) => !list.some((row) => row.name === "old-tab"));
+		ref.release();
+		current.release();
+	});
+
+	it("binds Envs v2: rows with users, sandboxes without a disk size", async () => {
+		const current = await holdIn(owner, Envs, {}, "owner");
+		await current.save({ name: "v2-host", config: { type: "ssh", host: "v2.example" } }, BACKGROUND_CONTEXT);
+		await current.save(
+			{ name: "v2-box", config: { type: "gondolin", host: "v2-host", diskGb: 8 } },
+			BACKGROUND_CONTEXT,
+		);
+		const ref = await boundIn(owner, EnvsV2, {}, "owner");
+		const rows = await until(ref.envs, (list) => list.some((row) => row.name === "v2-box"));
+		assert.deepEqual(rows.find((row) => row.name === "v2-box")?.config, { type: "gondolin", host: "v2-host" });
+		assert(Array.isArray(rows.find((row) => row.name === "v2-box")?.users));
+		await current.delete({ name: "v2-box" }, BACKGROUND_CONTEXT).catch(() => {});
+		ref.release();
+		current.release();
 	});
 
 	it("binds Catalog v2 and v3 on the server", async () => {

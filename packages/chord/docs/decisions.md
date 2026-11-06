@@ -2592,6 +2592,76 @@ validation and copies the v2 kernel added around Delta.
   targets for it become documented-behaviour tests. Rejected: the kit ordering steps by the direction of the changed
   contracts (works only when every change points one way). (2) No grace on consumers' `loading` (a reference with
   values reporting `loading` only after ~300 ms): rejected from the restart-only proposal.
+- **Reload restarts every affected object; old work finishes on old code (owner, 2026-11-05: "if you think the new
+  model is good, just ... fix p2"; the final design round: `/tmp/reload-final-brief.md`, three reviewers, model LS3
+  `/tmp/reload-final-step3-restart-study.md`, accepted by the attacking reviewer `/tmp/reload-final-step3-reload-review-2.md`;
+  supersedes the pure swap of slice 7b §5, "Swaps: dependents first", parked swaps and the swap handover of routines
+  and jobs):** the problem: a restart makes new calls wait until the old attempt drained, so any wait of old work on
+  something that needs the new attempt closed a cycle that only `closeTimeout` broke (a provider's running call
+  reaching its dependent through `ctx.get` while both restart; re-entry; mutual calls; the same across hosts). The
+  rules: (1) a reload restarts every live object of a changed plugin (no swap in place); documents and tables stay,
+  F-a, F-b, F-c of the restart study apply. (2) **Old work** (the calls running at the commit and every call they cause,
+  found through the call chain in `ctx` on one host and an `old` flag on `call` over trusted links, never honoured from
+  untrusted ones) runs on the target's open old attempt; a getter of old work for a version the new code dropped binds
+  the open old attempt or fails at once. (3) The old attempt seals once its own calls and the old work routed to it
+  drained and its successor's requests (as staging recorded them, bound after every fate of the reload started) are
+  live or failed for a reason other than another host's version skew, bounded by the reload drain bound
+  `reloadDrainTimeout` (default 5 s, at most `closeTimeout`); only then the successor's factory runs, so no new
+  declaration meets old work. (4) **New work** waits at the gate and runs on new code. (5) A same-host consumer whose
+  version the open old attempt binds sees the object live meanwhile (its new code may read the provider's old state
+  for up to the drain). (6) A wait of old work that its own open old attempt blocks through parked dependencies or an
+  opener's gate waits fails at once, `unavailable/reload_cycle`, naming the chain. What remains (waits that leave
+  Chord: roots opened without the method's `ctx`, Durable tasks, an app's locks) ends at the reload drain bound. The
+  bound cuts any method still running then (`released`): long work belongs in jobs (in-memory runs end `aborted
+  { reload }`, persisted ones resume per `resume`). A restart whose successor finds a failed request is reported
+  `parked { cause }`. Built as one change with the restart-only removal of the swap.
+- **A call's answer follows its state (owner, 2026-11-05: "seems doable without any big downsides"; Petr's report
+  that p2's UI is not optimistic):** before a host sends a `result` (or forwards one as a relay), it sends the page's
+  pending `state` for that origin, past the window if the window is full (bounded by the calls in flight). So when a
+  call resolves on the page, every change the answering host (and a relaying host) committed before answering is
+  applied there. Pages show optimistic values with React's `useOptimistic` (a helper for `TuiScope`), dropped when the
+  call settles; Chord changes no replicated state. Not covered: changes committed later (a method that returns before
+  its effect) or on another host that does not relay the answer. The guide's rule: a method that should feel instant
+  awaits its own changes and keeps them on the host that answers.
+- **App authoring rules confirmed by the p2 audit (owner, 2026-11-05):** state that lives outside Chord (a native's
+  store, a Durable document) is shown through `self.follow` of its synchronous observer, never copied into a Chord
+  document by a routine; long work is a job, never a method or a root a method awaits; a root opened inside a method
+  takes the method's `ctx` (without its cancellation); a session's worker owns its data and pushes what the server's
+  index shows (title, branches, working state) to the server inside the method that changed it, never pulling from
+  the server. p2 is rewritten by these rules (audit `/tmp/p2-optimistic-audit.md`).
+- **Files v2 (owner, 2026-11-05; p2's per-host stores brief):** the kit's `Files` is replaced (`chord.app.files`
+  version 2; the version 1 index, one document holding the whole map, is not migrated: nothing outside tests and
+  examples used it). One object per host, bytes in the host's `files/blobs/`, index in four tables of the host's
+  store (`files`: one row per version; `folders`; `blobs` with a reference count; `paths`, high-water marks) plus two persisted documents
+  (`summary` per space, `usage`). Spaces and paths, folders as index entries, moves in the index only, immutable
+  blobs with versions, `copy` sharing a blob, chunked writes as before, idempotency keys, fixed indexed metadata and
+  free `meta`, a summary per space, `copyFiles` and `filesFacet` exported. Decided in the build: (1) a version's id
+  is the id plugins keep (`FileInfo.id`); paths and version numbers are found through the index. (2) A version
+  number is never used twice for a path (owner's review, 2026-11-05: transcripts and links name an artifact by name
+  and version, so a reused number would show an old card new bytes): a `paths` table keeps each path's highest version
+  ever, through removals of versions, the path and its space; a new version is one past it. A move carries its
+  versions' numbers: the path left keeps its mark, the path moved to takes the higher of the two. (3) Changes of one `Files` object take turns (an in-memory queue
+  per attempt): a version number, a key's uniqueness per space and a blob's count are decided by reads before the
+  one transaction, never by a unique index (`key` is `""` when absent, and index columns cannot be `opt`). (4) A
+  folder listing shows the folder's folders first, then its files' newest versions, each by path; its cursor names
+  the part it continues. (5) Live listings are a second local type, `FilesFolder({ space, folder })`, following
+  (`self.follow`) what `Files` hands it: `self.query` is fixed per attempt and only for the declaring object, and
+  folders are dynamic. `Files` reads every watched folder of a changed space once, inside the changing method (one
+  read per watched folder and change). (6) The summary keeps the newest 20 versions by `created` (ties by id),
+  changed in the same commit as the change (the newest after a removal read before the commit, excluding what it
+  removes). (7) The total cap counts the blobs on disk (the `usage` document), so a copy costs nothing. (8) Blob
+  files a crash left without their commit are swept when the object goes live (one index read per blob file, under
+  the change queue). (9) `copyFiles` imports the part of the source store's export that is `Files`' own into a new
+  store and hard-links each blob (a copy where links are refused) while the export holds the source's commit queue,
+  so no removal can delete a blob the copied index names; it refuses an existing target. (10) `meta: null` is stored
+  as absent; space names are `[a-z0-9][a-z0-9._-]{0,63}`, paths at most 1,024 characters without empty, `.` or `..`
+  segments. (11) `cancel(upload)` drops an upload a writer gave up (a server route whose client went away), so it
+  holds neither a slot of the cap nor bytes for the hour until it expires. (12) `@earendil-works/chord/app/files`
+  exports `Files`, `FilesFolder`, `filesFacet`, `copyFiles` and the kit's private directories and stores without the
+  rest of the kit, for an app's worker process that must load neither esbuild nor the server's components (p2's). (13) A
+  write takes an optional `created` for imports (owner, 2026-11-05, after p2's migration dry run: every migrated file
+  had the migration's time, so newest-first orders meant nothing): the version keeps the time it was made elsewhere;
+  the summary's newest versions are kept in `created` order, not write order.
 - **Workers start from the base code the server booted with (owner, 2026-11-04: "let's do this for armin"; Armin's
   incident report, Radius artifact 01m6m3xek8fveayqgstayg8w92):** the problem: a worker loads its entry module and the
   base code it imports from disk when it is forked, while the server keeps what it loaded at boot. An edit of the

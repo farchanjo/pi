@@ -7,13 +7,15 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isChordError, type PluginFacet, webSocketLink } from "@earendil-works/chord";
-import { BACKGROUND_CONTEXT, withAbortSignal } from "@earendil-works/chord/context";
+import { filesFacet } from "@earendil-works/chord/app/files";
+import { BACKGROUND_CONTEXT } from "@earendil-works/chord/context";
 import type { RolloutResult } from "@earendil-works/chord/plugins";
 import { WebSocketServer } from "ws";
 import { type Ctx, createHost, type Host, type HostError, hostErrorText, Server } from "../runtime/chord.ts";
 import { envDefaultModel } from "../runtime/default-model.ts";
 import { type DevCommand, type DevResult, parseDevCommand } from "../runtime/dev-protocol.ts";
 import { configureFetch } from "../runtime/fetch.ts";
+import { assertMigrated, hostFiles, openHostStore, serverDirectory } from "../runtime/host-dirs.ts";
 import { enableCompression, fromOrigin, sendJson } from "../runtime/http.ts";
 import { captureProcessLogs, processLogs } from "../runtime/logs.ts";
 import { hasLoopbackCookie, loopbackCookie } from "../runtime/loopback-cookie.ts";
@@ -130,10 +132,22 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 		throw new Error(`Another p2 server uses ${dataDir}`, { cause: error });
 	});
 	const allowedHosts = options.allowedHosts ?? parseAllowedHosts(process.env.P2_ALLOWED_HOSTS);
+	// The server's Chord store (`<data>/server/store.sqlite`): persisted documents and job runs of its host-lifetime
+	// objects (session lifecycle operations, search rebuilds) and its `Files` index. Its outbox stays off: local-only
+	// data never goes to a sync. p2's older SQLite files stay their owners' natives.
+	let store: Awaited<ReturnType<typeof openHostStore>>;
+	try {
+		assertMigrated(dataDir);
+		store = await openHostStore(serverDirectory(dataDir), { outbox: false }, BACKGROUND_CONTEXT);
+	} catch (error) {
+		await unlock();
+		throw error;
+	}
 	// The server's own requests act as `SERVER`: a worker tells them from a person's (`WorkerBoundary`).
 	const host = createHost({
 		address: Server(),
 		principal: SERVER,
+		store,
 		onError: (error) => {
 			if (isOwnerNotice(error)) processLogs.notice("server", hostErrorText(error));
 			console.error("p2 server:", error);
@@ -314,11 +328,12 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 						facet: serverCore(host, info, {
 							resourceOptions: options.resources ?? {},
 							workers,
-							root: (fn, signal) =>
-								host.root(fn, signal ? withAbortSignal(signal, BACKGROUND_CONTEXT) : BACKGROUND_CONTEXT),
+							root: (fn, context) => host.root(fn, context),
 						}),
 					},
 					{ name: "@p2/tui-preferences", facet: tuiPreferencesFacet(dataDir) },
+					// The server's files (the kit's `Files`): `<data>/server/files/`.
+					{ name: "chord.app.files", facet: filesFacet(hostFiles(serverDirectory(dataDir))) },
 					...(options.facets ?? []),
 				],
 				modules: SERVER_PACKAGES,
@@ -329,6 +344,7 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 		processLogs.notice("server", `Server startup failed: ${error instanceof Error ? error.message : String(error)}`);
 		await workers.close(BACKGROUND_CONTEXT).catch(() => {});
 		await host.close(BACKGROUND_CONTEXT).catch(() => {});
+		await store.close(BACKGROUND_CONTEXT).catch(() => {});
 		p2Plugins.close();
 		stopLogs();
 		await new Promise<void>((resolve) => http.close(() => resolve()));
@@ -752,6 +768,7 @@ export async function startServer(options: ServerOptions = {}): Promise<P2Server
 				h2c?.close();
 				await workers.close(BACKGROUND_CONTEXT);
 				await host.close(BACKGROUND_CONTEXT);
+				await store.close(BACKGROUND_CONTEXT);
 				p2Plugins.close();
 				stopLogs();
 				http.closeAllConnections();

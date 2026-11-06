@@ -71,6 +71,11 @@
 			"types": "./dist/node/workers/index.d.ts",
 			"import": "./dist/node/workers/index.js"
 		},
+		"./workers/child": {
+			"source": "./src/node/workers/child.ts",
+			"types": "./dist/node/workers/child.d.ts",
+			"import": "./dist/node/workers/child.js"
+		},
 		"./plugins": {
 			"source": "./src/node/plugins/index.ts",
 			"types": "./dist/node/plugins/index.d.ts",
@@ -85,6 +90,11 @@
 			"source": "./src/node/app/index.ts",
 			"types": "./dist/node/app/index.d.ts",
 			"import": "./dist/node/app/index.js"
+		},
+		"./app/files": {
+			"source": "./src/node/app/files-entry.ts",
+			"types": "./dist/node/app/files-entry.d.ts",
+			"import": "./dist/node/app/files-entry.js"
 		},
 		"./web": {
 			"source": "./src/web/index.ts",
@@ -110,6 +120,11 @@
 			"source": "./src/node/tui/index.ts",
 			"types": "./dist/node/tui/index.d.ts",
 			"import": "./dist/node/tui/index.js"
+		},
+		"./sync": {
+			"source": "./src/sync/index.ts",
+			"types": "./dist/sync/index.d.ts",
+			"import": "./dist/sync/index.js"
 		},
 		"./package.json": "./package.json"
 	},
