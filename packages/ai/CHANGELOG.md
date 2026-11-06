@@ -10,6 +10,10 @@
 
 - Renamed the "OpenAI Codex (legacy)" provider back to "OpenAI Codex"
 
+### Fixed
+
+- Fixed stateful responses chaining never engaging for reasoning models: the delta skipped one item after the stored turn, but a reasoning model stores a reasoning item before its message, so the expected assistant slot was never there and every turn fell back to a full send. The delta now skips every item the server already stored (reasoning, assistant message, function call)
+
 ## [1.5.2] - 2026-11-05
 
 ### Added

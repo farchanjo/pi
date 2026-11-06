@@ -46,6 +46,20 @@ describe("planResponsesChain", () => {
 		expect(second.input).toEqual([user("BETA")]);
 	});
 
+	it("skips a stored reasoning turn, not just its message item", () => {
+		const turn1 = [user("ALPHA")];
+		planResponsesChain("s6", turn1, compat, false).commit("resp_6");
+
+		// A reasoning model stores a reasoning item before its message, and a tool
+		// turn stores the call: every one of those items is already server-side.
+		const reasoning = { type: "reasoning", id: "rs_1", encrypted_content: "x" };
+		const call = { type: "function_call", call_id: "call_1", name: "read", arguments: "{}" };
+		const turn2 = [...turn1, reasoning, assistant("ALPHA"), call, user("BETA")];
+		const second = planResponsesChain("s6", turn2, compat, false);
+		expect(second.previousResponseId).toBe("resp_6");
+		expect(second.input).toEqual([user("BETA")]);
+	});
+
 	it("falls back to the full transcript when the prefix was edited or compacted", () => {
 		const turn1 = [user("ALPHA")];
 		const first = planResponsesChain("s3", turn1, compat, false);

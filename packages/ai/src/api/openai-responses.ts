@@ -402,6 +402,19 @@ export type ResponsesChainPlan = {
 	drop: () => void;
 };
 
+/** Whether the item is part of the assistant turn the server already stored. */
+function isStoredTurnItem(item: unknown): boolean {
+	const { type, role } = (item ?? {}) as { type?: unknown; role?: unknown };
+	return type === "reasoning" || type === "function_call" || role === "assistant";
+}
+
+/** Index of the first item the server has not seen, starting at the stored turn. */
+function skipStoredTurn(messages: readonly unknown[], from: number): number {
+	let index = from;
+	while (index < messages.length && isStoredTurnItem(messages[index])) index++;
+	return index;
+}
+
 export function planResponsesChain(
 	sessionId: string | undefined,
 	messages: readonly unknown[],
@@ -422,19 +435,19 @@ export function planResponsesChain(
 		previous.digests.every((digest, index) => digest === digests[index]);
 
 	// The server keeps the assistant turn it generated, so the delta must skip it.
+	// A reasoning model answers with more than one item (a reasoning item, then the
+	// message, plus any function call), and every one of them is stored server-side.
 	// Measured on the live gateway: a delta carrying the assistant item costs 36
 	// input tokens where the equivalent full transcript costs 30, i.e. the item is
-	// duplicated. When the expected assistant slot is not there (compaction, an
-	// edited history) the turn falls back to a full send rather than guessing.
-	const skip = reusable ? 1 : 0;
-	const hasServerTurn = previous !== undefined && messages.length > previous.sent;
-	const nextRole = hasServerTurn ? (messages[previous.sent] as { role?: string })?.role : undefined;
-	// Only chain when the delta would carry something: the server turn alone is not
+	// duplicated. When the stored turn is not there (compaction, an edited history)
+	// the turn falls back to a full send rather than guessing.
+	const deltaStart = previous !== undefined ? skipStoredTurn(messages, previous.sent) : 0;
+	// Only chain when the delta would carry something: the stored turn alone is not
 	// a request, and an empty input would burn a round trip for nothing.
-	const canSkip = !reusable || skip === 0 || (nextRole === "assistant" && messages.length > previous.sent + 1);
+	const canSkip = !reusable || (previous !== undefined && deltaStart > previous.sent && deltaStart < messages.length);
 	return {
 		input: (reusable && canSkip
-			? messages.slice(previous.sent + 1)
+			? messages.slice(deltaStart)
 			: messages) as unknown as ResponseCreateParamsStreaming["input"],
 		stateful: true,
 		previousResponseId: reusable && canSkip ? previous.responseId : undefined,
