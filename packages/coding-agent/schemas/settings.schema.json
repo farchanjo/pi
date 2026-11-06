@@ -718,7 +718,7 @@
           "const": "fast"
         }
       ],
-      "description": "Encoder effort for request compression: \"max\" (default), \"default\", or \"fast\"."
+      "description": "Encoder effort for request compression: \"default\" (Brotli 5), \"max\" (Brotli 11), or \"fast\"."
     },
     "cacheWarming": {
       "anyOf": [
