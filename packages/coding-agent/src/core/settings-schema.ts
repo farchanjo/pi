@@ -435,7 +435,7 @@ export const SettingsSchema = Type.Object(
 		),
 		httpCompressionLevel: Type.Optional(
 			Type.Union([Type.Literal("max"), Type.Literal("default"), Type.Literal("fast")], {
-				description: 'Encoder effort for request compression: "max" (default), "default", or "fast".',
+				description: 'Encoder effort for request compression: "default" (Brotli 5), "max" (Brotli 11), or "fast".',
 			}),
 		),
 		cacheWarming: Type.Optional(

@@ -568,7 +568,7 @@ export class SettingsSelectorComponent extends Container {
 			{
 				id: "http-compression-level",
 				label: "Compression level",
-				description: "Encoder effort for request compression; max is the default",
+				description: "Encoder effort for request compression; default is Brotli 5",
 				currentValue: config.httpCompressionLevel,
 				values: ["max", "default", "fast"],
 			},

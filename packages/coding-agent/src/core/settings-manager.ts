@@ -980,10 +980,10 @@ export class SettingsManager {
 		this.save();
 	}
 
-	/** Encoder effort for request compression; `"max"` when unset. */
+	/** Encoder effort for request compression; `"default"` (Brotli 5) when unset. */
 	getHttpCompressionLevel(): "max" | "default" | "fast" {
 		const level = this.settings.httpCompressionLevel;
-		return level === "default" || level === "fast" ? level : "max";
+		return level === "fast" || level === "max" ? level : "default";
 	}
 
 	setHttpCompressionLevel(level: "max" | "default" | "fast"): void {

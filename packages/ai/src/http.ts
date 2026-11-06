@@ -1,5 +1,5 @@
 // Automatic provider HTTP transport: HTTP/2 over TLS through ALPN, request-body compression from best to worst
-// (Brotli, zstd, gzip, none) at maximum quality by default, and response compression negotiated through undici's
+// (Brotli, zstd, gzip, none) at balanced quality by default, and response compression negotiated through undici's
 // Accept-Encoding. The coding agent installs its own fetch (with the user's HTTP settings) and therefore keeps control;
 // a bare pi-ai consumer, such as the DSH plugin, gets all of this without configuring anything.
 
@@ -34,7 +34,7 @@ export interface CompressionOptions {
 export type CompressionRequestInit = RequestInit & { readonly compression?: CompressionOptions };
 
 /** Defaults used when neither the request nor the caller names a compression policy. */
-export const DEFAULT_COMPRESSION_OPTIONS: Required<CompressionOptions> = { mode: "br", level: "max" };
+export const DEFAULT_COMPRESSION_OPTIONS: Required<CompressionOptions> = { mode: "br", level: "default" };
 
 /** Request headers that let a provider config (for example DSh's `cordis.patch.yml`) override compression. */
 export const COMPRESSION_MODE_HEADER = "x-pi-http-compression";
@@ -91,7 +91,7 @@ export async function closeProviderFetch(): Promise<void> {
 
 function createProviderFetch(compressRequest: boolean): typeof globalThis.fetch {
 	const fetch = (input: Parameters<typeof undiciFetch>[0], init?: CompressionRequestInit) =>
-		fetchWithCompression(input, init, { mode: compressRequest ? "br" : "off", level: "max" }, (next) =>
+		fetchWithCompression(input, init, { mode: compressRequest ? "br" : "off", level: "default" }, (next) =>
 			undiciFetch(input, { ...next, dispatcher: getDispatcher() }),
 		);
 	// npm undici's Response and the Node declaration of global fetch's Response are structurally compatible here; the
@@ -114,7 +114,7 @@ export async function fetchWithCompression(
 	const headers = new Headers(init?.headers);
 	const mode = init?.compression?.mode ?? parseMode(headers.get(COMPRESSION_MODE_HEADER)) ?? options.mode ?? "br";
 	const level =
-		init?.compression?.level ?? parseLevel(headers.get(COMPRESSION_LEVEL_HEADER)) ?? options.level ?? "max";
+		init?.compression?.level ?? parseLevel(headers.get(COMPRESSION_LEVEL_HEADER)) ?? options.level ?? "default";
 	headers.delete(COMPRESSION_MODE_HEADER);
 	headers.delete(COMPRESSION_LEVEL_HEADER);
 	if (!headers.has("accept-encoding")) headers.set("accept-encoding", ACCEPT_ENCODING);

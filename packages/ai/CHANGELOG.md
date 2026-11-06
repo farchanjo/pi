@@ -10,6 +10,8 @@
 
 - Renamed the "OpenAI Codex (legacy)" provider back to "OpenAI Codex"
 
+- Request compression now defaults to the `"default"` effort (Brotli 5, zstd 3, gzip 6) instead of the maximum one, which spent CPU for little ratio; `"max"` (11/22/9) stays available per request through the `compression` field or the level header
+
 ### Fixed
 
 - Fixed stateful responses chaining never engaging for reasoning models: the delta skipped one item after the stored turn, but a reasoning model stores a reasoning item before its message, so the expected assistant slot was never there and every turn fell back to a full send. The delta now skips every item the server already stored (reasoning, assistant message, function call)

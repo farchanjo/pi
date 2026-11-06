@@ -41,7 +41,7 @@ export type HttpDispatcherOptions = {
 	readonly http2?: boolean;
 	/** Request-body compression mode. `"auto"` tries Brotli, zstd, gzip, then none. */
 	readonly requestCompression?: CompressionMode;
-	/** Encoder effort for request compression; `"max"` when unset. */
+	/** Encoder effort for request compression; `"default"` (Brotli 5) when unset. */
 	readonly compressionLevel?: CompressionLevel;
 	/** Legacy alias: `true` means gzip only, `requestCompression: "gzip"`. */
 	readonly requestGzip?: boolean;
@@ -208,7 +208,7 @@ function resolveOptions(options: HttpDispatcherOptions): ResolvedHttpOptions {
 		keepAliveTimeoutMs: Math.floor(keepAliveTimeoutMs),
 		http2: options.http2 === true,
 		requestCompression: options.requestCompression ?? (options.requestGzip === true ? "gzip" : "off"),
-		compressionLevel: options.compressionLevel ?? "max",
+		compressionLevel: options.compressionLevel ?? "default",
 	};
 }
 
@@ -233,7 +233,7 @@ class HttpFetch {
 			keepAliveTimeoutMs: DEFAULT_HTTP_KEEP_ALIVE_TIMEOUT_MS,
 			http2: false,
 			requestCompression: "off",
-			compressionLevel: "max",
+			compressionLevel: "default",
 		};
 	}
 

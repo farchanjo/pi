@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `httpCompressionLevel` now defaults to `"default"` (Brotli 5, zstd 3, gzip 6) instead of `"max"` (11/22/9), which spent CPU for little ratio; `"max"` stays selectable
+
 ## [1.5.2] - 2026-11-05
 
 ### Added

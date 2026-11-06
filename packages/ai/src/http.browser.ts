@@ -18,7 +18,7 @@ export type CompressionRequestInit = RequestInit & { compression?: CompressionOp
 
 export const DEFAULT_COMPRESSION_OPTIONS = {
 	mode: "auto",
-	level: "max",
+	level: "default",
 } as const satisfies Required<CompressionOptions>;
 export const COMPRESSION_MODE_HEADER = "x-pi-http-compression";
 export const COMPRESSION_LEVEL_HEADER = "x-pi-http-compression-level";

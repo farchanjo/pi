@@ -233,8 +233,8 @@ describe("provider HTTP transport", () => {
 		}
 	});
 
-	it("defaults to best-to-worst compression at maximum effort", () => {
-		expect(DEFAULT_COMPRESSION_OPTIONS).toEqual({ mode: "br", level: "max" });
+	it("defaults to best-to-worst compression at the default effort", () => {
+		expect(DEFAULT_COMPRESSION_OPTIONS).toEqual({ mode: "br", level: "default" });
 	});
 
 	it("honors a per-request compression override", async () => {
